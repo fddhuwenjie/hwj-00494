@@ -141,41 +141,10 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
-  try {
-    if (!/^\d+$/.test(req.params.id)) {
-      return next();
-    }
-    const revision = await queryOne('SELECT * FROM revision_requests WHERE id = ?', [req.params.id]);
-    if (!revision) {
-      return res.status(404).json({ error: '修订申请不存在' });
-    }
-
-    const comments = await query(`
-      SELECT * FROM revision_comments
-      WHERE revision_id = ?
-      ORDER BY created_at ASC
-    `, [req.params.id]);
-
-    let evidenceList = [];
-    const evidenceIds = parseJsonSafe(revision.evidence_ids);
-    if (evidenceIds && evidenceIds.length > 0) {
-      const placeholders = evidenceIds.map(() => '?').join(',');
-      evidenceList = await query(`SELECT * FROM evidence WHERE id IN (${placeholders})`, evidenceIds);
-    }
-
-    res.json({
-      ...revision,
-      status_label: STATUS_LABELS[revision.status] || revision.status,
-      before_data: parseJsonSafe(revision.before_data),
-      after_data: parseJsonSafe(revision.after_data),
-      evidence_ids: evidenceIds,
-      evidence: evidenceList,
-      comments
-    });
-  } catch (err) {
-    next(err);
-  }
+router.get('/statuses', (req, res) => {
+  res.json({
+    statuses: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))
+  });
 });
 
 router.post('/detect-conflicts', async (req, res, next) => {
@@ -270,6 +239,101 @@ router.post('/', async (req, res, next) => {
       before_data: parseJsonSafe(revision.before_data),
       after_data: parseJsonSafe(revision.after_data),
       evidence_ids: parseJsonSafe(revision.evidence_ids)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/change-logs/:target_type/:target_id', async (req, res, next) => {
+  try {
+    const { target_type, target_id } = req.params;
+
+    if (!['person', 'marriage', 'relationship'].includes(target_type)) {
+      return res.status(400).json({ error: '无效的目标类型' });
+    }
+
+    const logs = await query(`
+      SELECT cl.*, rr.submitter, rr.reason, rr.reviewer
+      FROM change_logs cl
+      LEFT JOIN revision_requests rr ON cl.revision_id = rr.id
+      WHERE cl.target_type = ? AND cl.target_id = ?
+      ORDER BY cl.created_at DESC
+    `, [target_type, parseInt(target_id)]);
+
+    const enriched = logs.map(log => ({
+      ...log,
+      before_data: parseJsonSafe(log.before_data),
+      after_data: parseJsonSafe(log.after_data)
+    }));
+
+    res.json({ data: enriched, total: enriched.length });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/rollback/:log_id', async (req, res, next) => {
+  try {
+    if (!/^\d+$/.test(req.params.log_id)) {
+      return next();
+    }
+    const { operator, notes } = req.body;
+
+    const log = await queryOne('SELECT * FROM change_logs WHERE id = ?', [req.params.log_id]);
+    if (!log) {
+      return res.status(404).json({ error: '变更记录不存在' });
+    }
+
+    const rollbackData = parseJsonSafe(log.before_data);
+    if (!rollbackData && log.action !== 'create') {
+      return res.status(400).json({ error: '回滚数据不存在' });
+    }
+
+    let rollbackAction;
+    if (log.action === 'create') {
+      rollbackAction = 'delete';
+    } else if (log.action === 'delete') {
+      rollbackAction = 'create';
+    } else {
+      rollbackAction = 'update';
+    }
+
+    let finalTargetId = log.target_id;
+
+    try {
+      if (log.target_type === 'person') {
+        finalTargetId = await applyPersonChange(rollbackData || {}, rollbackAction, log.target_id);
+      } else if (log.target_type === 'marriage') {
+        finalTargetId = await applyMarriageChange(rollbackData || {}, rollbackAction, log.target_id);
+      } else if (log.target_type === 'relationship') {
+        finalTargetId = await applyRelationshipChange(rollbackData || {}, rollbackAction, log.target_id);
+      }
+    } catch (applyErr) {
+      return res.status(400).json({ error: '回滚失败: ' + applyErr.message });
+    }
+
+    const currentAfter = log.action === 'create' ? log.after_data : log.before_data;
+    const currentBefore = log.action === 'create' ? log.before_data : log.after_data;
+
+    await execute(`
+      INSERT INTO change_logs (target_type, target_id, action, before_data, after_data, revision_id, operator, notes)
+      VALUES (?, ?, 'rollback', ?, ?, ?, ?, ?)
+    `, [
+      log.target_type,
+      finalTargetId,
+      currentBefore,
+      currentAfter,
+      null,
+      operator || '管理员',
+      notes || `回滚到变更 #${log.id} 之前的状态`
+    ]);
+
+    res.json({
+      message: '回滚成功',
+      target_type: log.target_type,
+      target_id: finalTargetId,
+      rolled_back_to: log.id
     });
   } catch (err) {
     next(err);
@@ -378,8 +442,48 @@ async function applyRelationshipChange(afterData, action, targetId) {
   }
 }
 
+router.get('/:id', async (req, res, next) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
+    const revision = await queryOne('SELECT * FROM revision_requests WHERE id = ?', [req.params.id]);
+    if (!revision) {
+      return res.status(404).json({ error: '修订申请不存在' });
+    }
+
+    const comments = await query(`
+      SELECT * FROM revision_comments
+      WHERE revision_id = ?
+      ORDER BY created_at ASC
+    `, [req.params.id]);
+
+    let evidenceList = [];
+    const evidenceIds = parseJsonSafe(revision.evidence_ids);
+    if (evidenceIds && evidenceIds.length > 0) {
+      const placeholders = evidenceIds.map(() => '?').join(',');
+      evidenceList = await query(`SELECT * FROM evidence WHERE id IN (${placeholders})`, evidenceIds);
+    }
+
+    res.json({
+      ...revision,
+      status_label: STATUS_LABELS[revision.status] || revision.status,
+      before_data: parseJsonSafe(revision.before_data),
+      after_data: parseJsonSafe(revision.after_data),
+      evidence_ids: evidenceIds,
+      evidence: evidenceList,
+      comments
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.post('/:id/review', async (req, res, next) => {
   try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
     const { status, reviewer, review_notes } = req.body;
 
     if (!status || !['approved', 'rejected', 'need_more_info'].includes(status)) {
@@ -448,6 +552,9 @@ router.post('/:id/review', async (req, res, next) => {
 
 router.post('/:id/comments', async (req, res, next) => {
   try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
     const { author, content } = req.body;
 
     if (!content) {
@@ -473,6 +580,9 @@ router.post('/:id/comments', async (req, res, next) => {
 
 router.get('/:id/comments', async (req, res, next) => {
   try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
     const comments = await query(`
       SELECT * FROM revision_comments
       WHERE revision_id = ?
@@ -483,104 +593,6 @@ router.get('/:id/comments', async (req, res, next) => {
   } catch (err) {
     next(err);
   }
-});
-
-router.get('/change-logs/:target_type/:target_id', async (req, res, next) => {
-  try {
-    const { target_type, target_id } = req.params;
-
-    if (!['person', 'marriage', 'relationship'].includes(target_type)) {
-      return res.status(400).json({ error: '无效的目标类型' });
-    }
-
-    const logs = await query(`
-      SELECT cl.*, rr.submitter, rr.reason, rr.reviewer
-      FROM change_logs cl
-      LEFT JOIN revision_requests rr ON cl.revision_id = rr.id
-      WHERE cl.target_type = ? AND cl.target_id = ?
-      ORDER BY cl.created_at DESC
-    `, [target_type, parseInt(target_id)]);
-
-    const enriched = logs.map(log => ({
-      ...log,
-      before_data: parseJsonSafe(log.before_data),
-      after_data: parseJsonSafe(log.after_data)
-    }));
-
-    res.json({ data: enriched, total: enriched.length });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.post('/rollback/:log_id', async (req, res, next) => {
-  try {
-    const { operator, notes } = req.body;
-
-    const log = await queryOne('SELECT * FROM change_logs WHERE id = ?', [req.params.log_id]);
-    if (!log) {
-      return res.status(404).json({ error: '变更记录不存在' });
-    }
-
-    const rollbackData = parseJsonSafe(log.before_data);
-    if (!rollbackData && log.action !== 'create') {
-      return res.status(400).json({ error: '回滚数据不存在' });
-    }
-
-    let rollbackAction;
-    if (log.action === 'create') {
-      rollbackAction = 'delete';
-    } else if (log.action === 'delete') {
-      rollbackAction = 'create';
-    } else {
-      rollbackAction = 'update';
-    }
-
-    let finalTargetId = log.target_id;
-
-    try {
-      if (log.target_type === 'person') {
-        finalTargetId = await applyPersonChange(rollbackData || {}, rollbackAction, log.target_id);
-      } else if (log.target_type === 'marriage') {
-        finalTargetId = await applyMarriageChange(rollbackData || {}, rollbackAction, log.target_id);
-      } else if (log.target_type === 'relationship') {
-        finalTargetId = await applyRelationshipChange(rollbackData || {}, rollbackAction, log.target_id);
-      }
-    } catch (applyErr) {
-      return res.status(400).json({ error: '回滚失败: ' + applyErr.message });
-    }
-
-    const currentAfter = log.action === 'create' ? log.after_data : log.before_data;
-    const currentBefore = log.action === 'create' ? log.before_data : log.after_data;
-
-    await execute(`
-      INSERT INTO change_logs (target_type, target_id, action, before_data, after_data, revision_id, operator, notes)
-      VALUES (?, ?, 'rollback', ?, ?, ?, ?, ?)
-    `, [
-      log.target_type,
-      finalTargetId,
-      currentBefore,
-      currentAfter,
-      null,
-      operator || '管理员',
-      notes || `回滚到变更 #${log.id} 之前的状态`
-    ]);
-
-    res.json({
-      message: '回滚成功',
-      target_type: log.target_type,
-      target_id: finalTargetId,
-      rolled_back_to: log.id
-    });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/statuses', (req, res) => {
-  res.json({
-    statuses: Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))
-  });
 });
 
 module.exports = router;

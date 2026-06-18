@@ -51,13 +51,21 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-router.get('/:id', async (req, res, next) => {
+router.get('/by-target/:target_type/:target_id', async (req, res, next) => {
   try {
-    const evidence = await queryOne('SELECT * FROM evidence WHERE id = ?', [req.params.id]);
-    if (!evidence) {
-      return res.status(404).json({ error: '证据不存在' });
+    const { target_type, target_id } = req.params;
+
+    if (!['person', 'marriage', 'relationship'].includes(target_type)) {
+      return res.status(400).json({ error: '无效的目标类型' });
     }
-    res.json(evidence);
+
+    const list = await query(`
+      SELECT * FROM evidence
+      WHERE target_type = ? AND target_id = ?
+      ORDER BY created_at DESC
+    `, [target_type, parseInt(target_id)]);
+
+    res.json({ data: list, total: list.length });
   } catch (err) {
     next(err);
   }
@@ -114,8 +122,26 @@ router.post('/', async (req, res, next) => {
   }
 });
 
+router.get('/:id', async (req, res, next) => {
+  try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
+    const evidence = await queryOne('SELECT * FROM evidence WHERE id = ?', [req.params.id]);
+    if (!evidence) {
+      return res.status(404).json({ error: '证据不存在' });
+    }
+    res.json(evidence);
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.put('/:id', async (req, res, next) => {
   try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
     const existing = await queryOne('SELECT * FROM evidence WHERE id = ?', [req.params.id]);
     if (!existing) {
       return res.status(404).json({ error: '证据不存在' });
@@ -150,6 +176,9 @@ router.put('/:id', async (req, res, next) => {
 
 router.delete('/:id', async (req, res, next) => {
   try {
+    if (!/^\d+$/.test(req.params.id)) {
+      return next();
+    }
     const existing = await queryOne('SELECT * FROM evidence WHERE id = ?', [req.params.id]);
     if (!existing) {
       return res.status(404).json({ error: '证据不存在' });
@@ -157,26 +186,6 @@ router.delete('/:id', async (req, res, next) => {
 
     await execute('DELETE FROM evidence WHERE id = ?', [req.params.id]);
     res.json({ message: '删除成功', deletedId: req.params.id });
-  } catch (err) {
-    next(err);
-  }
-});
-
-router.get('/by-target/:target_type/:target_id', async (req, res, next) => {
-  try {
-    const { target_type, target_id } = req.params;
-
-    if (!['person', 'marriage', 'relationship'].includes(target_type)) {
-      return res.status(400).json({ error: '无效的目标类型' });
-    }
-
-    const list = await query(`
-      SELECT * FROM evidence
-      WHERE target_type = ? AND target_id = ?
-      ORDER BY created_at DESC
-    `, [target_type, parseInt(target_id)]);
-
-    res.json({ data: list, total: list.length });
   } catch (err) {
     next(err);
   }

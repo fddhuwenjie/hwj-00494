@@ -39,14 +39,14 @@ router.get('/:id', async (req, res, next) => {
     }
     
     const parents = await query(`
-      SELECT p.*, r.relationship_type 
+      SELECT p.*, r.id as relationship_id, r.relationship_type 
       FROM relationships r 
       JOIN persons p ON r.parent_id = p.id 
       WHERE r.child_id = ? AND r.relationship_type IN ('父子', '母子', '收养父子', '收养母子')
     `, [req.params.id]);
     
     const children = await query(`
-      SELECT p.*, r.relationship_type 
+      SELECT p.*, r.id as relationship_id, r.relationship_type 
       FROM relationships r 
       JOIN persons p ON r.child_id = p.id 
       WHERE r.parent_id = ? AND r.relationship_type IN ('父子', '母子', '收养父子', '收养母子')
@@ -56,13 +56,14 @@ router.get('/:id', async (req, res, next) => {
       SELECT m.*, 
              CASE WHEN m.husband_id = ? THEN w.name ELSE h.name END as spouse_name,
              CASE WHEN m.husband_id = ? THEN w.gender ELSE h.gender END as spouse_gender,
-             CASE WHEN m.husband_id = ? THEN w.id ELSE h.id END as spouse_id
+             CASE WHEN m.husband_id = ? THEN w.id ELSE h.id END as spouse_id,
+             CASE WHEN m.husband_id = ? THEN w.photo_url ELSE h.photo_url END as spouse_photo
       FROM marriages m
       LEFT JOIN persons h ON m.husband_id = h.id
       LEFT JOIN persons w ON m.wife_id = w.id
       WHERE m.husband_id = ? OR m.wife_id = ?
       ORDER BY m.marriage_order
-    `, [req.params.id, req.params.id, req.params.id, req.params.id, req.params.id]);
+    `, [req.params.id, req.params.id, req.params.id, req.params.id, req.params.id, req.params.id]);
     
     const siblings = await query(`
       SELECT DISTINCT p.* 
