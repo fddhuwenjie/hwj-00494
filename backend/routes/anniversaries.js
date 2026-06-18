@@ -2,30 +2,50 @@ const express = require('express');
 const router = express.Router();
 const { query, queryOne, execute } = require('../utils/db-helpers');
 
-function getDaysUntilNextAnniversary(eventDate, today) {
-  const event = new Date(eventDate);
-  const todayDate = new Date(today);
-  
-  const thisYearAnniversary = new Date(todayDate.getFullYear(), event.getMonth(), event.getDate());
-  const nextYearAnniversary = new Date(todayDate.getFullYear() + 1, event.getMonth(), event.getDate());
-  
-  const diffThisYear = Math.ceil((thisYearAnniversary - todayDate) / (1000 * 60 * 60 * 24));
-  const diffNextYear = Math.ceil((nextYearAnniversary - todayDate) / (1000 * 60 * 60 * 24));
-  
+function parseDateParts(dateStr) {
+  const parts = String(dateStr).split('-').map(Number);
+  return { year: parts[0], month: parts[1] - 1, day: parts[2] };
+}
+
+function formatLocalDate(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getTodayStr() {
+  return formatLocalDate(new Date());
+}
+
+function getDaysUntilNextAnniversary(eventDate, todayStr) {
+  const { month: eventMonth, day: eventDay } = parseDateParts(eventDate);
+  const { year: todayYear, month: todayMonth, day: todayDay } = parseDateParts(todayStr);
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const todayNoon = new Date(todayYear, todayMonth, todayDay, 12, 0, 0);
+  const thisYearAnniv = new Date(todayYear, eventMonth, eventDay, 12, 0, 0);
+  const nextYearAnniv = new Date(todayYear + 1, eventMonth, eventDay, 12, 0, 0);
+
+  const diffThisYear = Math.round((thisYearAnniv - todayNoon) / msPerDay);
+  const diffNextYear = Math.round((nextYearAnniv - todayNoon) / msPerDay);
+
   return diffThisYear >= 0 ? diffThisYear : diffNextYear;
 }
 
-function getThisYearAnniversaryDate(eventDate, today) {
-  const event = new Date(eventDate);
-  const todayDate = new Date(today);
-  
-  const thisYearAnniversary = new Date(todayDate.getFullYear(), event.getMonth(), event.getDate());
-  const nextYearAnniversary = new Date(todayDate.getFullYear() + 1, event.getMonth(), event.getDate());
-  
-  const diffThisYear = Math.ceil((thisYearAnniversary - todayDate) / (1000 * 60 * 60 * 24));
-  const targetDate = diffThisYear >= 0 ? thisYearAnniversary : nextYearAnniversary;
-  
-  return targetDate.toISOString().split('T')[0];
+function getThisYearAnniversaryDate(eventDate, todayStr) {
+  const { month: eventMonth, day: eventDay } = parseDateParts(eventDate);
+  const { year: todayYear, month: todayMonth, day: todayDay } = parseDateParts(todayStr);
+
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const todayNoon = new Date(todayYear, todayMonth, todayDay, 12, 0, 0);
+  const thisYearAnniv = new Date(todayYear, eventMonth, eventDay, 12, 0, 0);
+  const nextYearAnniv = new Date(todayYear + 1, eventMonth, eventDay, 12, 0, 0);
+
+  const diffThisYear = Math.round((thisYearAnniv - todayNoon) / msPerDay);
+  const target = diffThisYear >= 0 ? thisYearAnniv : nextYearAnniv;
+
+  return formatLocalDate(target);
 }
 
 router.get('/', async (req, res, next) => {
@@ -77,7 +97,7 @@ router.get('/', async (req, res, next) => {
     
     const anniversaries = await query(sql, params);
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     const enriched = anniversaries.map(a => ({
       ...a,
       days_until_next: getDaysUntilNextAnniversary(a.event_date, today),
@@ -100,8 +120,8 @@ router.get('/monthly', async (req, res, next) => {
     const targetYear = year ? parseInt(year) : today.getFullYear();
     const targetMonth = month ? parseInt(month) - 1 : today.getMonth();
     
-    const startDate = new Date(targetYear, targetMonth, 1).toISOString().split('T')[0];
-    const endDate = new Date(targetYear, targetMonth + 1, 0).toISOString().split('T')[0];
+    const startDate = formatLocalDate(new Date(targetYear, targetMonth, 1));
+    const endDate = formatLocalDate(new Date(targetYear, targetMonth + 1, 0));
     
     const sql = `
       SELECT fa.*, p.name as person_name, p.gender as person_gender, p.photo_url as person_photo
@@ -112,7 +132,7 @@ router.get('/monthly', async (req, res, next) => {
     
     const anniversaries = await query(sql, []);
     
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = formatLocalDate(today);
     const monthlyAnniversaries = anniversaries.filter(a => {
       const thisYearDate = getThisYearAnniversaryDate(a.event_date, todayStr);
       return thisYearDate >= startDate && thisYearDate <= endDate;
@@ -161,7 +181,7 @@ router.get('/upcoming', async (req, res, next) => {
     `;
     
     const anniversaries = await query(sql, []);
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     
     const upcoming = anniversaries
       .map(a => ({
@@ -194,7 +214,7 @@ router.get('/stats', async (req, res, next) => {
     `;
     const allAnniversaries = await query(monthSql, []);
     
-    const todayStr = today.toISOString().split('T')[0];
+    const todayStr = formatLocalDate(today);
     const monthlyList = allAnniversaries.map(a => ({
       ...a,
       this_year_date: getThisYearAnniversaryDate(a.event_date, todayStr)
@@ -266,7 +286,7 @@ router.get('/:id', async (req, res, next) => {
       return res.status(404).json({ error: '纪念日不存在' });
     }
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     anniversary.days_until_next = getDaysUntilNextAnniversary(anniversary.event_date, today);
     anniversary.this_year_date = getThisYearAnniversaryDate(anniversary.event_date, today);
     
@@ -411,7 +431,7 @@ router.get('/by-person/:personId', async (req, res, next) => {
       ORDER BY fa.event_date
     `, [personId]);
     
-    const today = new Date().toISOString().split('T')[0];
+    const today = getTodayStr();
     const enriched = anniversaries.map(a => ({
       ...a,
       days_until_next: getDaysUntilNextAnniversary(a.event_date, today),
