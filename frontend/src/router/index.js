@@ -46,6 +46,12 @@ const routes = [
     name: 'Revisions',
     component: () => import('@/views/Revisions.vue'),
     meta: { title: '修订中心' }
+  },
+  {
+    path: '/anniversaries',
+    name: 'Anniversaries',
+    component: () => import('@/views/Anniversaries.vue'),
+    meta: { title: '家族纪念日' }
   }
 ];
 

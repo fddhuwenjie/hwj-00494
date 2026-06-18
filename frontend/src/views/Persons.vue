@@ -295,6 +295,55 @@
             </div>
           </el-tab-pane>
 
+          <el-tab-pane label="纪念日" name="anniversaries">
+            <div class="detail-section">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px">
+                <h3 class="detail-section-title" style="margin-bottom: 0">家族纪念日</h3>
+                <el-button type="primary" size="small" @click="openAnniversaryDialog()">
+                  <el-icon><Plus /></el-icon> 新增纪念日
+                </el-button>
+              </div>
+              <div v-if="detailContext.anniversaries.length === 0" class="empty-state">
+                <el-icon class="empty-icon"><Calendar /></el-icon>
+                <p>暂无纪念日记录，点击上方按钮添加</p>
+              </div>
+              <el-table v-else :data="detailContext.anniversaries" border stripe>
+                <el-table-column prop="event_type" label="类型" width="120">
+                  <template #default="{ row }">
+                    <el-tag :type="getEventTypeTag(row.event_type)" size="small">
+                      {{ row.event_type }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="event_date" label="日期" width="120" />
+                <el-table-column label="今年日期" width="120">
+                  <template #default="{ row }">{{ row.this_year_date }}</template>
+                </el-table-column>
+                <el-table-column label="距今天数" width="100">
+                  <template #default="{ row }">
+                    <el-tag :type="row.days_until_next === 0 ? 'danger' : row.days_until_next <= 7 ? 'warning' : 'info'" size="small">
+                      {{ row.days_until_next === 0 ? '今天' : row.days_until_next + '天' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="is_lunar" label="历法" width="80">
+                  <template #default="{ row }">{{ row.is_lunar ? '农历' : '公历' }}</template>
+                </el-table-column>
+                <el-table-column prop="notes" label="备注" />
+                <el-table-column label="操作" width="150">
+                  <template #default="{ row }">
+                    <el-button size="small" type="primary" link @click="openAnniversaryDialog(row)">
+                      编辑
+                    </el-button>
+                    <el-button size="small" type="danger" link @click="deleteAnniversary(row)">
+                      删除
+                    </el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </div>
+          </el-tab-pane>
+
           <el-tab-pane label="考证证据" name="evidence">
             <div class="detail-section">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px">
@@ -676,6 +725,62 @@
         <el-button type="primary" @click="submitRevision">提交申请</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="anniversaryDialogVisible"
+      :title="isAnniversaryEdit ? '编辑纪念日' : '新增纪念日'"
+      width="550px"
+      @close="resetAnniversaryForm"
+    >
+      <el-form :model="anniversaryForm" :rules="anniversaryRules" ref="anniversaryFormRef" label-width="100px">
+        <el-form-item label="事件类型" prop="event_type">
+          <el-select v-model="anniversaryForm.event_type" placeholder="请选择事件类型" style="width: 100%">
+            <el-option label="生日" value="生日" />
+            <el-option label="忌日" value="忌日" />
+            <el-option label="结婚纪念日" value="结婚纪念日" />
+            <el-option label="迁居纪念" value="迁居纪念" />
+            <el-option label="家族大事" value="家族大事" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="事件日期" prop="event_date">
+          <el-date-picker
+            v-model="anniversaryForm.event_date"
+            type="date"
+            placeholder="选择事件日期"
+            value-format="YYYY-MM-DD"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="历法">
+          <el-radio-group v-model="anniversaryForm.is_lunar">
+            <el-radio :value="0">公历</el-radio>
+            <el-radio :value="1">农历</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item label="重复规则">
+          <el-select v-model="anniversaryForm.repeat_rule" style="width: 100%">
+            <el-option label="每年" value="yearly" />
+            <el-option label="不重复" value="none" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="提醒提前">
+          <el-input-number v-model="anniversaryForm.reminder_days" :min="0" :max="30" style="width: 100%" />
+          <span style="font-size: 12px; color: #909399">提前几天提醒（0-30天）</span>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input
+            v-model="anniversaryForm.notes"
+            type="textarea"
+            :rows="3"
+            placeholder="请输入备注信息（可选）"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="anniversaryDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAnniversarySubmit">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -687,7 +792,7 @@ import {
   Male, Female, Connection
 } from '@element-plus/icons-vue';
 import { useFamilyStore } from '@/stores/family';
-import { evidenceApi, revisionApi, personApi } from '@/api';
+import { evidenceApi, revisionApi, personApi, anniversaryApi } from '@/api';
 
 const store = useFamilyStore();
 const loading = ref(false);
@@ -715,9 +820,29 @@ const revisionAfterJson = ref('');
 const evidenceTarget = reactive({ type: 'person', id: null });
 const revisionTarget = reactive({ type: 'person', data: null });
 
-const detailContext = reactive({ evidence: [], changeLogs: [] });
+const detailContext = reactive({ evidence: [], changeLogs: [], anniversaries: [] });
 const marriageContext = reactive({ evidence: [], changeLogs: [] });
 const relationshipContext = reactive({ evidence: [], changeLogs: [] });
+
+const anniversaryDialogVisible = ref(false);
+const anniversaryFormRef = ref(null);
+const isAnniversaryEdit = ref(false);
+const currentAnniversaryId = ref(null);
+
+const anniversaryForm = reactive({
+  person_id: null,
+  event_type: '',
+  event_date: '',
+  is_lunar: 0,
+  repeat_rule: 'yearly',
+  reminder_days: 7,
+  notes: ''
+});
+
+const anniversaryRules = {
+  event_type: [{ required: true, message: '请选择事件类型', trigger: 'change' }],
+  event_date: [{ required: true, message: '请选择事件日期', trigger: 'change' }]
+};
 
 const evidenceTargetLabel = computed(() => {
   const labels = { person: '人物', marriage: '婚姻', relationship: '亲子关系' };
@@ -808,6 +933,24 @@ async function handleDelete(row) {
   } catch (err) { if (err !== 'cancel') ElMessage.error(err.response?.data?.error || '删除失败'); }
 }
 
+function getEventTypeTag(type) {
+  const map = {
+    '生日': 'success',
+    '忌日': 'info',
+    '结婚纪念日': 'danger',
+    '迁居纪念': 'warning',
+    '家族大事': 'primary'
+  };
+  return map[type] || '';
+}
+
+async function loadContextAnniversaries(personId, ctx) {
+  try {
+    const result = await anniversaryApi.byPerson(personId);
+    ctx.anniversaries = result.data || [];
+  } catch (err) { ctx.anniversaries = []; }
+}
+
 async function viewDetail(row) {
   try {
     currentPerson.value = await store.loadPersonDetail(row.id);
@@ -815,6 +958,7 @@ async function viewDetail(row) {
     detailVisible.value = true;
     await loadContextEvidence('person', row.id, detailContext);
     await loadContextChangeLogs('person', row.id, detailContext);
+    await loadContextAnniversaries(row.id, detailContext);
   } catch (err) { ElMessage.error('加载详情失败'); }
 }
 
@@ -985,6 +1129,66 @@ async function handleRollback(log, targetType, targetData) {
     refreshContextForTarget(targetType, targetData.id);
     loadData();
   } catch (err) { if (err !== 'cancel') ElMessage.error(err.response?.data?.error || '回滚失败'); }
+}
+
+function openAnniversaryDialog(row = null) {
+  if (!currentPerson.value) return;
+  isAnniversaryEdit.value = !!row;
+  currentAnniversaryId.value = row?.id || null;
+  resetAnniversaryForm();
+  if (row) {
+    Object.assign(anniversaryForm, row);
+  } else {
+    anniversaryForm.person_id = currentPerson.value.id;
+  }
+  anniversaryDialogVisible.value = true;
+}
+
+function resetAnniversaryForm() {
+  anniversaryForm.person_id = currentPerson.value?.id || null;
+  anniversaryForm.event_type = '';
+  anniversaryForm.event_date = '';
+  anniversaryForm.is_lunar = 0;
+  anniversaryForm.repeat_rule = 'yearly';
+  anniversaryForm.reminder_days = 7;
+  anniversaryForm.notes = '';
+  if (anniversaryFormRef.value) anniversaryFormRef.value.resetFields();
+}
+
+async function handleAnniversarySubmit() {
+  if (!anniversaryFormRef.value) return;
+  await anniversaryFormRef.value.validate(async (valid) => {
+    if (valid) {
+      try {
+        if (isAnniversaryEdit.value) {
+          await anniversaryApi.update(currentAnniversaryId.value, anniversaryForm);
+          ElMessage.success('更新成功');
+        } else {
+          await anniversaryApi.create(anniversaryForm);
+          ElMessage.success('添加成功');
+        }
+        anniversaryDialogVisible.value = false;
+        if (currentPerson.value) {
+          await loadContextAnniversaries(currentPerson.value.id, detailContext);
+        }
+      } catch (err) {
+        ElMessage.error(err.response?.data?.error || '操作失败');
+      }
+    }
+  });
+}
+
+async function deleteAnniversary(row) {
+  try {
+    await ElMessageBox.confirm(`确定要删除"${row.event_type}"吗？`, '删除确认', { type: 'warning' });
+    await anniversaryApi.delete(row.id);
+    ElMessage.success('删除成功');
+    if (currentPerson.value) {
+      await loadContextAnniversaries(currentPerson.value.id, detailContext);
+    }
+  } catch (err) {
+    if (err !== 'cancel') ElMessage.error(err.response?.data?.error || '删除失败');
+  }
 }
 </script>
 

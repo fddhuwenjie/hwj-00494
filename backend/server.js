@@ -28,6 +28,7 @@ const exportRoutes = require('./routes/export');
 const shareRoutes = require('./routes/share');
 const evidenceRoutes = require('./routes/evidence');
 const revisionRoutes = require('./routes/revisions');
+const anniversaryRoutes = require('./routes/anniversaries');
 
 function ensureTableExists(tableName, createSql) {
   return new Promise((resolve, reject) => {
@@ -121,6 +122,21 @@ async function migrateDatabase() {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (revision_id) REFERENCES revision_requests(id) ON DELETE SET NULL
       )
+    `],
+    ['family_anniversaries', `
+      CREATE TABLE family_anniversaries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        person_id INTEGER NOT NULL,
+        event_type TEXT NOT NULL CHECK(event_type IN ('生日', '忌日', '结婚纪念日', '迁居纪念', '家族大事')),
+        event_date TEXT NOT NULL,
+        is_lunar INTEGER DEFAULT 0,
+        repeat_rule TEXT DEFAULT 'yearly',
+        reminder_days INTEGER DEFAULT 7,
+        notes TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+      )
     `]
   ];
 
@@ -129,7 +145,10 @@ async function migrateDatabase() {
     ['idx_revision_status', 'CREATE INDEX idx_revision_status ON revision_requests(status)'],
     ['idx_revision_target', 'CREATE INDEX idx_revision_target ON revision_requests(target_type, target_id)'],
     ['idx_comments_revision', 'CREATE INDEX idx_comments_revision ON revision_comments(revision_id)'],
-    ['idx_changelog_target', 'CREATE INDEX idx_changelog_target ON change_logs(target_type, target_id)']
+    ['idx_changelog_target', 'CREATE INDEX idx_changelog_target ON change_logs(target_type, target_id)'],
+    ['idx_anniversaries_person', 'CREATE INDEX idx_anniversaries_person ON family_anniversaries(person_id)'],
+    ['idx_anniversaries_date', 'CREATE INDEX idx_anniversaries_date ON family_anniversaries(event_date)'],
+    ['idx_anniversaries_type', 'CREATE INDEX idx_anniversaries_type ON family_anniversaries(event_type)']
   ];
 
   for (const [name, sql] of tables) {
@@ -152,6 +171,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/share', shareRoutes);
 app.use('/api/evidence', evidenceRoutes);
 app.use('/api/revisions', revisionRoutes);
+app.use('/api/anniversaries', anniversaryRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: '家族族谱API服务运行正常' });

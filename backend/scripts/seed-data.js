@@ -124,6 +124,25 @@ db.serialize(() => {
   });
   eventStmt.finalize();
 
+  const anniversaries = [
+    { person_id: 1, event_type: '生日', event_date: '1935-03-15', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 7, notes: '家族第一代诞辰' },
+    { person_id: 1, event_type: '忌日', event_date: '2015-08-20', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 14, notes: '张大山逝世纪念日' },
+    { person_id: 2, event_type: '生日', event_date: '1938-07-22', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 7, notes: '家族第一代诞辰' },
+    { person_id: 2, event_type: '忌日', event_date: '2012-11-10', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 14, notes: '李秀兰逝世纪念日' },
+    { person_id: 3, event_type: '生日', event_date: '1960-05-10', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 3, notes: '张明生日' },
+    { person_id: 3, event_type: '结婚纪念日', event_date: '1984-05-20', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 7, notes: '张明与刘芳结婚纪念日' },
+    { person_id: 9, event_type: '生日', event_date: '1985-04-20', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 3, notes: '张伟生日' },
+    { person_id: 16, event_type: '生日', event_date: '1999-12-01', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 7, notes: '张琳生日' },
+    { person_id: 1, event_type: '家族大事', event_date: '1958-10-01', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 30, notes: '家族奠基日，张大山与李秀兰结婚' },
+    { person_id: 3, event_type: '迁居纪念', event_date: '1990-06-18', is_lunar: 0, repeat_rule: 'yearly', reminder_days: 7, notes: '迁居至海淀区现住址' }
+  ];
+
+  const annivStmt = db.prepare(`INSERT INTO family_anniversaries (person_id, event_type, event_date, is_lunar, repeat_rule, reminder_days, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+  anniversaries.forEach(a => {
+    annivStmt.run(a.person_id, a.event_type, a.event_date, a.is_lunar, a.repeat_rule, a.reminder_days, a.notes);
+  });
+  annivStmt.finalize();
+
   db.run('COMMIT', (err) => {
     if (err) {
       console.error('数据插入失败:', err);

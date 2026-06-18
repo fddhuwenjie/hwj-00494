@@ -89,4 +89,16 @@ export const revisionApi = {
   getStatuses: () => request.get('/revisions/statuses')
 };
 
+export const anniversaryApi = {
+  list: (params) => request.get('/anniversaries', { params }),
+  monthly: (params) => request.get('/anniversaries/monthly', { params }),
+  upcoming: (params) => request.get('/anniversaries/upcoming', { params }),
+  stats: () => request.get('/anniversaries/stats'),
+  detail: (id) => request.get(`/anniversaries/${id}`),
+  create: (data) => request.post('/anniversaries', data),
+  update: (id, data) => request.put(`/anniversaries/${id}`, data),
+  delete: (id) => request.delete(`/anniversaries/${id}`),
+  byPerson: (personId) => request.get(`/anniversaries/by-person/${personId}`)
+};
+
 export default request;

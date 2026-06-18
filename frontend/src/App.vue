@@ -31,6 +31,10 @@
             <el-icon><Edit /></el-icon>
             <span>修订中心</span>
           </el-menu-item>
+          <el-menu-item index="/anniversaries">
+            <el-icon><Calendar /></el-icon>
+            <span>纪念日</span>
+          </el-menu-item>
         </el-menu>
       </div>
     </el-header>

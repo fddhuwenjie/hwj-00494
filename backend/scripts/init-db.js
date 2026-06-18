@@ -155,6 +155,26 @@ db.serialize(() => {
   db.run(`CREATE INDEX IF NOT EXISTS idx_comments_revision ON revision_comments(revision_id)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_changelog_target ON change_logs(target_type, target_id)`);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS family_anniversaries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL CHECK(event_type IN ('生日', '忌日', '结婚纪念日', '迁居纪念', '家族大事')),
+      event_date TEXT NOT NULL,
+      is_lunar INTEGER DEFAULT 0,
+      repeat_rule TEXT DEFAULT 'yearly',
+      reminder_days INTEGER DEFAULT 7,
+      notes TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+    )
+  `);
+
+  db.run(`CREATE INDEX IF NOT EXISTS idx_anniversaries_person ON family_anniversaries(person_id)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_anniversaries_date ON family_anniversaries(event_date)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_anniversaries_type ON family_anniversaries(event_type)`);
+
   console.log('数据库初始化完成！');
 });
 
