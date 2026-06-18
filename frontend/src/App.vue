@@ -27,6 +27,10 @@
             <el-icon><Download /></el-icon>
             <span>导入导出</span>
           </el-menu-item>
+          <el-menu-item index="/revisions">
+            <el-icon><Edit /></el-icon>
+            <span>修订中心</span>
+          </el-menu-item>
         </el-menu>
       </div>
     </el-header>

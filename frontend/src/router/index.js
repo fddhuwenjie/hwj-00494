@@ -40,6 +40,12 @@ const routes = [
     name: 'ShareView',
     component: () => import('@/views/ShareView.vue'),
     meta: { title: '族谱分享' }
+  },
+  {
+    path: '/revisions',
+    name: 'Revisions',
+    component: () => import('@/views/Revisions.vue'),
+    meta: { title: '修订中心' }
   }
 ];
 

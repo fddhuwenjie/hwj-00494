@@ -67,4 +67,26 @@ export const shareApi = {
   delete: (id) => request.delete(`/share/${id}`)
 };
 
+export const evidenceApi = {
+  list: (params) => request.get('/evidence', { params }),
+  detail: (id) => request.get(`/evidence/${id}`),
+  create: (data) => request.post('/evidence', data),
+  update: (id, data) => request.put(`/evidence/${id}`, data),
+  delete: (id) => request.delete(`/evidence/${id}`),
+  byTarget: (targetType, targetId) => request.get(`/evidence/by-target/${targetType}/${targetId}`)
+};
+
+export const revisionApi = {
+  list: (params) => request.get('/revisions', { params }),
+  detail: (id) => request.get(`/revisions/${id}`),
+  create: (data) => request.post('/revisions', data),
+  review: (id, data) => request.post(`/revisions/${id}/review`, data),
+  detectConflicts: (data) => request.post('/revisions/detect-conflicts', data),
+  addComment: (id, data) => request.post(`/revisions/${id}/comments`, data),
+  getComments: (id) => request.get(`/revisions/${id}/comments`),
+  getChangeLogs: (targetType, targetId) => request.get(`/revisions/change-logs/${targetType}/${targetId}`),
+  rollback: (logId, data) => request.post(`/revisions/rollback/${logId}`, data || {}),
+  getStatuses: () => request.get('/revisions/statuses')
+};
+
 export default request;
