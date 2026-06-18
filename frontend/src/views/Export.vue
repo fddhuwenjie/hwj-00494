@@ -161,7 +161,7 @@
               <el-form-item label="有效期">
                 <el-select v-model="shareForm.expires_days">
                   <el-option label="1天" :value="1" />
-                  <el-option label="7天" :value="7 />
+                  <el-option label="7天" :value="7" />
                   <el-option label="30天" :value="30" />
                   <el-option label="永久有效" :value="null" />
                 </el-select>
